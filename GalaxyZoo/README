@@ -1,0 +1,3 @@
+This folder contains code and files that are used to pull the identification of SDSS imaging from GalaxyZoo.
+
+For instance, I use it to pull galaxies that have a 95% confidence of being mergers from GalaxyZoo. I can then run these galaxies through GalaxySmelter_real_SDSS and MergerMonger determine and compare their probabilities of being various types of mergers according to my identification process. 
