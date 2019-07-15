@@ -1,18 +1,11 @@
 
 '''
 
-GalaxySmelter - This is the 'Real' edition to be applied to a real galaxy survey to extract predictors and place them in a table.
+GalaxySmelter - This is the mock version that extracts imaging predictors from
+mock galaxy broadband files and place them in a table. Then, this table can be run through
+'MergerMonger...' to produce the LDA classification, which can be applied to real galaxies.
 
 Things to install: Source Extractor, Galfit, statmorph (cite Vicente Rodriguez-Gomez)
-
-The first step is to determine how to obtain galaxy images, ivar images, and psf; here I show an example for MaNGA preimaging,
-utilizing wget - you can make your own directory that contains files, ivar files, and psfs, just name them camera_data, camera_data_ivar,
-and psf, respectively.
-
-These images need to be in units of counts.
-
-Here, I run everything from within a folder that has subfolders imaging/ and preim/
-which contain the output check images and the input images, respectively.
 '''
 
 '''
