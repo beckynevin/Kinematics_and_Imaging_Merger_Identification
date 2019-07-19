@@ -865,7 +865,7 @@ feature_dict2 = {i:label for i,label in zip(
               'Sersic N',
             'Shape Asymmetry'))}
 
-df2 = pd.io.parsers.read_table(filepath_or_buffer='LDA_img_statmorph_SDSS_superclean_ellip_rebin.txt',header=[0],sep='\t')
+df2 = pd.io.parsers.read_table(filepath_or_buffer='LDA_img_statmorph_SDSS_50_mergers.txt',header=[0],sep='\t')
 #LDA_img_statmorph_Fu_mergers.txt
 #LDA_img_statmorph_rando_MaNGA.txt
 df2.columns = [l for i,l in sorted(feature_dict2.items())] + ['Shape Asymmetry']
