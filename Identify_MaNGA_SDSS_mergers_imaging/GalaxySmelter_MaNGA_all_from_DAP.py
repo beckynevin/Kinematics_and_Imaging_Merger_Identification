@@ -38,6 +38,7 @@ import scipy
 import pyfits
 import math
 import numpy.ma as ma
+import pandas as pd
 
 def SDSS_objid_to_values(objid):
 
@@ -374,8 +375,16 @@ def write_galfit_feedme(name,xcen,ycen,xcen2,ycen2, mag, mag_zpt, num_bulges, le
 '''
 Calls galfit with the feedme file you created
 '''
+import subprocess
 def run_galfit(name):
-    os.system("galfit imaging/galfit.feedme_"+str(name)+">/dev/null 2>&1")
+    
+    call ="~/Applications/galfit imaging/galfit.feedme_"+str(name)+">/dev/null 2>&1"
+    #print('call', call)
+    #print(shlex.split(call))
+    #subprocess.check_output(shlex.split(call), shell=True)
+    subprocess.call(call,shell=True)
+    
+    
     
 '''Now open the galfit result and get the effective radius
 I've kept a lot of unnecessary stuff in here in case you want to
@@ -916,21 +925,45 @@ def make_figure(morph):
  
 '''
 Now we begin.
-
-Here, as an example, I feed the code a list of galaxies in MaNGA identified by Fu et al. 2018 as close pairs.
-If you are a MaNGA team member with access to this data, you can run these galaxies, otherwise, use another set.
 '''
 
+# The first step is to import the necessary information from 'table_manga_gals.txt'
+
+# Import it as a dataframe
+
+
+feature_dict = {i:label for i,label in zip(
+range(7),
+  ('PLATEIFU',
+  'run',
+  'field',
+  'camcol',
+  'RA',
+'DEC','redshift'))}
+
+df = pd.io.parsers.read_csv(filepath_or_buffer='table_manga_gals.txt',#'_view_all.txt',#filepath_or_buffer='LDA_img_ratio_'+str(run)+'_early_late_all_things.txt',#'_view_all.txt',
+       header=[0],
+       sep='\t'
+       )
+df.columns = [l for i,l in sorted(feature_dict.items())]
+
+df.dropna(how="all", inplace=True) # to drop the empty line at file-end
+
+print(df)
+
+
+
 #SDSS superclean merger Galaxy Zoo
-sdss_list=[587730773351923978, 587727177912680538, 587727223561257225, 587731187277955213, 587730774962864138, 587727178986750088, 588015510343712908, 587730775499997384, 587727180060688562, 587727225690783827, 587727226227720294, 587731186204868616, 588015510344040607, 588015508733624406, 587727225691242683, 587730772816167051, 588015510344302646, 588015509807497271, 587727178450927744, 588290881638760664, 587727178988191864]
-ra_list=['00:00:20.24', '00:00:37.17', '00:02:27.29', '00:02:49.07', '00:03:08.23', '00:03:57.92', '00:05:27.39', '00:05:54.09', '00:05:58.00', '00:06:07.51', '00:06:24.76', '00:08:27.81', '00:08:32.88', '00:10:11.15', '00:10:33.29', '00:10:55.50', '00:11:08.83', '00:11:43.68', '00:13:30.75', '00:14:31.15', '00:16:54.99']
-dec_list=['+14:11:09.9', '-11:02:07.6', '+16:04:42.5', '+00:45:04.8', '+15:33:48.8', '-10:20:44.3', '+00:50:48.1', '+15:53:42.8', '-09:21:17.8', '-10:30:32.7', '-10:01:31.2', '-00:00:17.7', '+01:02:20.1', '-00:14:30.8', '-10:36:10.9', '+13:52:49.7', '+00:50:43.7', '+00:31:22.5', '-10:43:17.6', '+15:49:02.2', '-10:23:44.0']
+#sdss_list=[587730773351923978, 587727177912680538, 587727223561257225, 587731187277955213, 587730774962864138, 587727178986750088, 588015510343712908, 587730775499997384, 587727180060688562, 587727225690783827, 587727226227720294, 587731186204868616, 588015510344040607, 588015508733624406, 587727225691242683, 587730772816167051, 588015510344302646, 588015509807497271, 587727178450927744, 588290881638760664, 587727178988191864]
+#ra_list=['00:00:20.24', '00:00:37.17', '00:02:27.29', '00:02:49.07', '00:03:08.23', '00:03:57.92', '00:05:27.39', '00:05:54.09', '00:05:58.00', '00:06:07.51', '00:06:24.76', '00:08:27.81', '00:08:32.88', '00:10:11.15', '00:10:33.29', '00:10:55.50', '00:11:08.83', '00:11:43.68', '00:13:30.75', '00:14:31.15', '00:16:54.99']
+#dec_list=['+14:11:09.9', '-11:02:07.6', '+16:04:42.5', '+00:45:04.8', '+15:33:48.8', '-10:20:44.3', '+00:50:48.1', '+15:53:42.8', '-09:21:17.8', '-10:30:32.7', '-10:01:31.2', '-00:00:17.7', '+01:02:20.1', '-00:14:30.8', '-10:36:10.9', '+13:52:49.7', '+00:50:43.7', '+00:31:22.5', '-10:43:17.6', '+15:49:02.2', '-10:23:44.0']
 
 
-merger=np.zeros(len(sdss_list))
+merger=np.zeros(len(df))
 kept_ids=[]#if you need a list of which ones ran without failing
 
-print(len(sdss_list))
+print(len(df))
+
 
 
 '''
@@ -945,7 +978,7 @@ Also, things to change for different surveys:
 2. redshift of each galaxy
 '''
 
-file=open('LDA_img_statmorph_SDSS_50_mergers.txt','w')
+file=open('LDA_img_statmorph_MaNGA_test.txt','w')
 
 
 
@@ -954,48 +987,65 @@ counter=0
 mag_list=[]
 S_N_list=[]
 
-for i in range(len(sdss_list)):
+for i in range(len(df)):
+    sdss=df['PLATEIFU'][i]
     #i=i+1
-    sdss=sdss_list[i]
-    print('~~~~~~~~~~~~~~~~~~')
-    print(sdss)
-    print('~~~~~~~~~~~~~~~~~~')
     '''Search through drpall for redshift, the mangaid, and the designid, you need these to directly
     access the preimaging files, which are not stored in the same format as our input lists'''
     
     
-    decode=SDSS_objid_to_values(sdss)
+    #decode=SDSS_objid_to_values(sdss)
     #return skyVersion, rerun, run, camcol, field, object_num
     #https://data.sdss.org/sas/dr14/eboss/photoObj/frames/301/2566/2/
 
+    print('run', df['run'][i], 'camcol', df['camcol'][i], 'field', df['field'][i], 'redshift', df['redshift'][i])
     
         
     try:
-        if decode[4] > 100:
-            im=fits.open('sdss/frame-r-00'+str(decode[2])+'-'+str(decode[3])+'-0'+str(decode[4])+'.fits')
-        if decode[4] < 100:
-            im=fits.open('sdss/frame-r-00'+str(decode[2])+'-'+str(decode[3])+'-00'+str(decode[4])+'.fits')
+        if df['run'][i] < 1000:
+            if df['camcol'][i] > 100:
+                im=fits.open('sdss/frame-r-000'+str(df['run'][i])+'-'+str(df['field'][i])+'-0'+str(df['camcol'][i])+'.fits')
+            if df['camcol'][i] < 100:
+                im=fits.open('sdss/frame-r-000'+str(df['run'][i])+'-'+str(df['field'][i])+'-00'+str(df['camcol'][i])+'.fits')
+        else:
+            if df['camcol'][i] > 100:
+                im=fits.open('sdss/frame-r-00'+str(df['run'][i])+'-'+str(df['field'][i])+'-0'+str(df['camcol'][i])+'.fits')
+            if df['camcol'][i] < 100:
+                im=fits.open('sdss/frame-r-00'+str(df['run'][i])+'-'+str(df['field'][i])+'-00'+str(df['camcol'][i])+'.fits')
     except FileNotFoundError:
-        os.chdir(os.path.expanduser('/Users/beckynevin/Documents/Backup_My_Book/My_Passport_Backup/Kinematics_and_Imaging_Merger_Identification/GalaxyZoo/sdss'))
+        os.chdir(os.path.expanduser('/Users/beckynevin/CfA_Code/Kinematics_and_Imaging_Merger_Identification/Identify_MaNGA_SDSS_mergers_imaging/sdss'))
         '''Here is where it is necessary to know the SDSS data password and username'''
         try:
-            
-            if decode[4] > 100:
-                os.system('wget https://data.sdss.org/sas/dr14/eboss/photoObj/frames/301/'+str(decode[2])+'/'+str(decode[3])+'/frame-r-00'+str(decode[2])+'-'+str(decode[3])+'-0'+str(decode[4])+'.fits.bz2')
-                os.system('gunzip frame-r-00'+str(decode[2])+'-'+str(decode[3])+'-0'+str(decode[4])+'.fits.bz2')
-            if decode[4] < 100:
-                os.system('wget https://data.sdss.org/sas/dr14/eboss/photoObj/frames/301/'+str(decode[2])+'/'+str(decode[3])+'/frame-r-00'+str(decode[2])+'-'+str(decode[3])+'-00'+str(decode[4])+'.fits.bz2')
-                os.system('gunzip frame-r-00'+str(decode[2])+'-'+str(decode[3])+'-00'+str(decode[4])+'.fits.bz2')
+            if df['run'][i] < 1000:
+                if df['camcol'][i] > 100:
+                    os.system('wget https://data.sdss.org/sas/dr14/eboss/photoObj/frames/301/'+str(df['run'][i])+'/'+str(df['field'][i])+'/frame-r-000'+str(df['run'][i])+'-'+str(df['field'][i])+'-0'+str(df['camcol'][i])+'.fits.bz2')
+                    os.system('gunzip frame-r-000'+str(df['run'][i])+'-'+str(df['field'][i])+'-0'+str(df['camcol'][i])+'.fits.bz2')
+                if df['camcol'][i] < 100:
+                    os.system('wget https://data.sdss.org/sas/dr14/eboss/photoObj/frames/301/'+str(df['run'][i])+'/'+str(df['field'][i])+'/frame-r-000'+str(df['run'][i])+'-'+str(df['field'][i])+'-00'+str(df['camcol'][i])+'.fits.bz2')
+                    os.system('gunzip frame-r-000'+str(df['run'][i])+'-'+str(df['field'][i])+'-00'+str(df['camcol'][i])+'.fits.bz2')
+            else:
+                if df['camcol'][i] > 100:
+                    os.system('wget https://data.sdss.org/sas/dr14/eboss/photoObj/frames/301/'+str(df['run'][i])+'/'+str(df['field'][i])+'/frame-r-00'+str(df['run'][i])+'-'+str(df['field'][i])+'-0'+str(df['camcol'][i])+'.fits.bz2')
+                    os.system('gunzip frame-r-00'+str(df['run'][i])+'-'+str(df['field'][i])+'-0'+str(df['camcol'][i])+'.fits.bz2')
+                if df['camcol'][i] < 100:
+                    os.system('wget https://data.sdss.org/sas/dr14/eboss/photoObj/frames/301/'+str(df['run'][i])+'/'+str(df['field'][i])+'/frame-r-00'+str(df['run'][i])+'-'+str(df['field'][i])+'-00'+str(df['camcol'][i])+'.fits.bz2')
+                    os.system('gunzip frame-r-00'+str(df['run'][i])+'-'+str(df['field'][i])+'-00'+str(df['camcol'][i])+'.fits.bz2')
         except FileNotFoundError:
             continue
-        os.chdir(os.path.expanduser('/Users/beckynevin/Documents/Backup_My_Book/My_Passport_Backup/Kinematics_and_Imaging_Merger_Identification/GalaxyZoo'))
+        os.chdir(os.path.expanduser('/Users/beckynevin/CfA_Code/Kinematics_and_Imaging_Merger_Identification/Identify_MaNGA_SDSS_mergers_imaging'))
 
 
     try:
-        if decode[4] > 100:
-            im=fits.open('sdss/frame-r-00'+str(decode[2])+'-'+str(decode[3])+'-0'+str(decode[4])+'.fits')
-        if decode[4] < 100:
-            im=fits.open('sdss/frame-r-00'+str(decode[2])+'-'+str(decode[3])+'-00'+str(decode[4])+'.fits')
+        if df['run'][i] < 1000:
+            if df['camcol'][i] > 100:
+                im=fits.open('sdss/frame-r-000'+str(df['run'][i])+'-'+str(df['field'][i])+'-0'+str(df['camcol'][i])+'.fits')
+            if df['camcol'][i] < 100:
+                im=fits.open('sdss/frame-r-000'+str(df['run'][i])+'-'+str(df['field'][i])+'-00'+str(df['camcol'][i])+'.fits')
+        else:
+            if df['camcol'][i] > 100:
+                im=fits.open('sdss/frame-r-00'+str(df['run'][i])+'-'+str(df['field'][i])+'-0'+str(df['camcol'][i])+'.fits')
+            if df['camcol'][i] < 100:
+                im=fits.open('sdss/frame-r-00'+str(df['run'][i])+'-'+str(df['field'][i])+'-00'+str(df['camcol'][i])+'.fits')
     except FileNotFoundError:
         STOP
     
@@ -1008,7 +1058,7 @@ for i in range(len(sdss_list)):
     
 
     
-    obj_coords = SkyCoord(str(ra_list[i])+' '+str(dec_list[i]),unit=(u.hourangle, u.deg))
+    obj_coords = SkyCoord(str(df['RA'][i])+' '+str(df['DEC'][i]),unit=(u.hourangle, u.deg))
 
     #pos = coords.SkyCoord(str(ra_list[i])+' '+str(dec_list[i]), unit = u.deg, frame='fk5')#"1:12:43.2 +1:12:43", unit=u.deg
     #xid = SDSS.query_region(pos, spectro=True)
@@ -1131,7 +1181,7 @@ for i in range(len(sdss_list)):
 
  
     pixelscale =  0.5#This is universally 0.5" spaxels for MaNGA                                                                                                    
-    redshift=0.4
+    redshift = df['redshift'][i]
     kpc_arcmin=cosmo.kpc_proper_per_arcmin(redshift)#insert the redshift                                                                                            
     '''Divide the pixelscale (kpc) by kpc/arcsec to get arcsec                                                                                                      
     size of pixels'''
@@ -1381,6 +1431,9 @@ for i in range(len(sdss_list)):
     
     
     morph=source_morphs[0]
+    
+    if morph.sn_per_pixel < 2.5:
+        continue
     #if morph.flag==1:
     #    '''This means the measurement is unreliable'''
     #    continue
@@ -1393,9 +1446,8 @@ for i in range(len(sdss_list)):
     S_N_list.append(morph.sn_per_pixel)
     mag_list.append(mag_flux)
 
-    if i > 30:
-        break
-    continue
+    
+    
     
     
     print('Gini =', morph.gini)
@@ -1427,21 +1479,20 @@ for i in range(len(sdss_list)):
 
     print('my assy', n, 'shape assy morhp', morph.shape_asymmetry)
     
-
+    n = morph.shape_asymmetry
+    if ser > 20:
+        ser =morph.sersic_n
     
     if counter==0:
         file.write('Counter'+'\t'+
             'ID'+'\t'+'Merger?'+'\t'+'# Bulges'+'\t'+'Sep'+'\t'+'Flux Ratio'+'\t'+'Gini'+'\t'+'M20'+'\t'+'C'+'\t'+'A'+'\t'+'S'+
-                    '\t'+'Sersic n'+'\t'+'A_s'+'\t'
-                   +'Elongation'+'\t'+'Sersic AR'+'\n')#was str(np.shape(vel_dist)[1]-1-j)                                                                             
+                    '\t'+'Sersic n'+'\t'+'A_s'+'\n')#was str(np.shape(vel_dist)[1]-1-j)
 
     #The Merger? column is meaningless; MergerMonger will classify while ignoring these columns
     #but it is important to leave it in for ease so that the dataframes have the same headers and match formats
     file.write(str(counter)+'\t'+str(sdss)+'\t'+str(merger[i])+'\t'+str(num_bulges)+'\t'+str(sep)+'\t'+str(flux_r)+
-                '\t'+str(gini)+'\t'+str(m20)+'\t'+str(con)+'\t'+str(asy)+'\t'+str(clu)+'\t'+str(ser)+'\t'+str(n)+'\t'+
-               str(morph.elongation)+'\t'+str(inc)+'\n')#was str(np.shape(vel_dist)[1]-1-j)                                                                             
-    if counter == 49:
-        break
+                '\t'+str(gini)+'\t'+str(m20)+'\t'+str(con)+'\t'+str(asy)+'\t'+str(clu)+'\t'+str(ser)+'\t'+str(n)+'\n')#was str(np.shape(vel_dist)[1]-1-j)
+    
     counter +=1
     kept_ids.append(sdss)
 
@@ -1451,7 +1502,7 @@ for i in range(len(sdss_list)):
     #os.system('rm preim/preimage-'+str(mangaid)+'.fits.gz')
 
     #I also delete the Galfit and source extractor related .fits files because they are big:
-    STOP
+    
     os.system('rm imaging/pet_radius_'+str(sdss)+'.fits')
     #os.system('rm imaging/out_'+str(manga_list[i])+'.fits')
     os.system('rm imaging/out_sigma_convolved_'+str(sdss)+'.fits')
@@ -1461,7 +1512,7 @@ for i in range(len(sdss_list)):
     #if counter==100:#
 #        break
     
-    STOP
+    
 file.close()
 
 print(S_N_list, np.mean(S_N_list))
