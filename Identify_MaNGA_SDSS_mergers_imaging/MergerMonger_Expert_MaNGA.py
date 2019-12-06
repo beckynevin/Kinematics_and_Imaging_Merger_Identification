@@ -33,7 +33,7 @@ def locate_min(a):
     return smallest, [index for index, element in enumerate(a)
                   if smallest == element]
 
-os.chdir(os.path.expanduser('/Users/beckynevin/Documents/Backup_My_Book/My_Passport_backup/MergerMonger'))
+os.chdir(os.path.expanduser('/Users/beckynevin/CfA_Code/Kinematics_and_Imaging_Merger_Identification/Identify_MaNGA_SDSS_mergers_imaging'))
 
    # from http://scikit-learn.org/stable/auto_examples/model_selection/plot_confusion_matrix.html#example-model-selection-plot-confusion-matrix-py
 def plot_confusion_matrix(cm, target_names, title, cmap=plt.cm.Blues):
@@ -80,7 +80,7 @@ plt.clf()
 missclass_list=[]
 
 
-df = pd.io.parsers.read_table(filepath_or_buffer='LDA_prep_predictors_all_combined_major.txt',header=[0],sep='\t')
+df = pd.io.parsers.read_csv(filepath_or_buffer='LDA_prep_predictors_all_combined_major.txt',header=[0],sep='\t')
 #was LDA_prep_predictors_all_combined.txt
 #LDA_img_ratio_statmorph_fg3_m12_A_S.txt'
 df.columns = [l for i,l in sorted(feature_dict.items())] + ['Shape Asymmetry']
@@ -622,13 +622,23 @@ merg_S_LDA=[]
 merg_n_LDA=[]
 merg_A_S_LDA=[]
 
+LDA_LDA_merg=[]
+LDA_LDA_nonmerg=[]
+coef = list_coef[new_min_index]
+inter = list_inter[new_min_index]
+
 for j in range(len(df)):
     if df['class label'].values[j]==0:
         nonmerg_gini.append(df['Gini'].values[j])
         nonmerg_m20.append(df['M20'].values[j])
+        # I think to get the LDA values themselves you'll need to grab the coefficients
+        # and the intercept
+        
+        LDA_LDA_nonmerg.append(np.sum(coef*X_std_here[j]+inter))
     if df['class label'].values[j]==1:
         merg_gini.append(df['Gini'].values[j])
         merg_m20.append(df['M20'].values[j])
+        LDA_LDA_merg.append(np.sum(coef*X_std_here[j]+inter))
     
     if LDA_ID[j]==1:#then its a nonmerger
         nonmerg_gini_LDA.append(df['Gini'].values[j])
@@ -843,10 +853,10 @@ ax2.set_title('Nonmergers', loc='right')
 plt.savefig('n_A_S_contour_LDA.pdf')
 
 
-STOP
 
 
 
+# Now load in the MaNGA table and classify
 
 
 feature_dict2 = {i:label for i,label in zip(
@@ -865,7 +875,7 @@ feature_dict2 = {i:label for i,label in zip(
               'Sersic N',
             'Shape Asymmetry'))}
 
-df2 = pd.io.parsers.read_table(filepath_or_buffer='LDA_img_statmorph_SDSS_50_mergers.txt',header=[0],sep='\t')
+df2 = pd.io.parsers.read_table(filepath_or_buffer='LDA_img_statmorph_MaNGA_test.txt',header=[0],sep='\t')
 #LDA_img_statmorph_Fu_mergers.txt
 #LDA_img_statmorph_rando_MaNGA.txt
 df2.columns = [l for i,l in sorted(feature_dict2.items())] + ['Shape Asymmetry']
@@ -978,6 +988,8 @@ merg_name_list=[]
 nonmerg_name_list=[]
 print('~~~~Mergers~~~~')
 LDA_value=[]
+LDA_value_merg=[]
+LDA_value_nonmerg=[]
 
 for j in range(len(classifications)):
     if classifications[j]==2:#merger
@@ -991,6 +1003,7 @@ for j in range(len(classifications)):
         merg_A_S_LDA_out.append(df2['Shape Asymmetry'].values[j])
         merg_name_list.append(df2['ID'].values[j])
         LDA_value.append(np.sum(X_std[j]))
+        LDA_value_merg.append(np.sum(coef*X_std[j]+inter))
         print(df2['ID'].values[j],df2['Gini'].values[j], df2['M20'].values[j],
               df2['Concentration (C)'].values[j],df2['Asymmetry (A)'].values[j],
               df2['Clumpiness (S)'].values[j],df2['Sersic N'].values[j],
@@ -1010,12 +1023,58 @@ for j in range(len(classifications)):
         nonmerg_A_S_LDA_out.append(df2['Shape Asymmetry'].values[j])
         nonmerg_name_list.append(df2['ID'].values[j])
         LDA_value.append(np.sum(X_std[j]))
+        LDA_value_nonmerg.append(np.sum(coef*X_std[j]+inter))
     
 plt.clf()
 plt.hist(LDA_value)
 plt.savefig('hist_LDA.pdf')
 
- 
+
+plt.clf()
+fig=plt.figure()
+ax0 = fig.add_subplot(211)
+ax0.hist(LDA_value_nonmerg, label='MaNGA Nonmergers', alpha=0.5)
+ax0.hist(LDA_value_merg, label='MaNGA Mergers', alpha=0.5)
+#ax0.set_xlim([-0.5, 1.5])
+plt.legend()
+ax1 = fig.add_subplot(212)
+ax1.hist(LDA_LDA_nonmerg, label='LDA Nonmergers', alpha=0.5)
+ax1.hist(LDA_LDA_merg, label='LDA Mergers', alpha=0.5)
+#ax1.set_xlim([-0.5, 1.5])
+plt.legend()
+
+plt.savefig('joint_hist_LDA.pdf')
+
+plt.clf()
+fig=plt.figure()
+ax0 = fig.add_subplot(211)
+ax0.hist(nonmerg_A_LDA_out, label='MaNGA Nonmergers', alpha=0.5)
+ax0.hist(merg_A_LDA_out, label='MaNGA Mergers', alpha=0.5)
+ax0.set_xlim([-0.5, 1.5])
+plt.legend()
+ax1 = fig.add_subplot(212)
+ax1.hist(nonmerg_A_LDA, label='LDA Nonmergers', alpha=0.5)
+ax1.hist(merg_A_LDA, label='LDA Mergers', alpha=0.5)
+ax1.set_xlim([-0.5, 1.5])
+plt.legend()
+plt.title('Asymmetry Distributions')
+plt.savefig('joint_hist_A.pdf')
+
+plt.clf()
+fig=plt.figure()
+ax0 = fig.add_subplot(211)
+ax0.hist(nonmerg_A_S_LDA_out, label='MaNGA Nonmergers', alpha=0.5)
+ax0.hist(merg_A_S_LDA_out, label='MaNGA Mergers', alpha=0.5)
+#ax0.set_xlim([-0.5, 1.5])
+plt.legend()
+ax1 = fig.add_subplot(212)
+ax1.hist(nonmerg_A_S_LDA, label='LDA Nonmergers', alpha=0.5)
+ax1.hist(merg_A_S_LDA, label='LDA Mergers', alpha=0.5)
+#ax1.set_xlim([-0.5, 1.5])
+plt.legend()
+plt.title('Shape Asymmetry Distributions')
+plt.savefig('joint_hist_A_S.pdf')
+
 
 print('percent nonmerg',len(nonmerg_name_list)/(len(nonmerg_name_list)+len(merg_name_list)))
 print('percent merg',len(merg_name_list)/(len(nonmerg_name_list)+len(merg_name_list)))
@@ -1208,13 +1267,14 @@ import seaborn as sns
 import matplotlib.colors as colors
 
 sns.set_style("white")
-os.chdir(os.path.expanduser('/Users/beckynevin/Documents/Backup_My_Book/My_Passport_backup/MergerMonger'))
-drpall=fits.open('drpall-v2_4_3.fits')
+os.chdir(os.path.expanduser('/Users/beckynevin/CfA_Code/Kinematics_and_Imaging_Merger_Identification/Identify_MaNGA_SDSS_mergers_imaging'))
+dapall=fits.open('/Users/beckynevin/CfA_Code/Kinematic_ML/dapall-v2_5_3-2.3.0.fits')
+drpall=fits.open('/Users/beckynevin/Clone_Docs_old_mac/Backup_My_Book/My_Passport_backup/Kinematics_and_Imaging_Merger_Identification/drpall-v2_4_3.fits')
 print(len(df2),int(np.sqrt(len(df2))))
 
 '''First, an option for just plotting these individually'''
 
-for p in range(len(df2)):#len(df2)):
+'''for p in range(len(df2)):#len(df2)):
     plt.clf()
     gal_id=df2[['ID']].values[p][0]
     gal_class=list_sklearn[new_min_index].predict(X_std)[p]
@@ -1234,10 +1294,155 @@ for p in range(len(df2)):#len(df2)):
     plt.axis('off')
  #   plt.colorbar()
     plt.tight_layout()
-    plt.savefig('SDSS_superclean_ellip_major_'+str(gal_id)+'.pdf')
+    plt.savefig('SDSS_superclean_ellip_major_'+str(gal_id)+'.pdf')'''
     
 
+
+# Now, this will be an option to make panel plots for each
+# that show the values of all the predictors in terms of the distribution of
+# simulated galaxies
+
+def second_smallest(numbers):
+    if (len(numbers)<2):
+      return
+    if ((len(numbers)==2)  and (numbers[0] == numbers[1]) ):
+      return
+    dup_items = set()
+    uniq_items = []
+    for x in numbers:
+      if x not in dup_items:
+        uniq_items.append(x)
+        dup_items.add(x)
+    uniq_items.sort()
+    return  uniq_items[1]
+
+for p in range(len(df2)):#len(df2)):
+    plt.clf()
+    gal_id=df2[['ID']].values[p][0]
+    gal_class=list_sklearn[new_min_index].predict(X_std)[p]
+    if gal_class==2:
+        gal_name='Merger'
+    else:
+        gal_name='Nonmerger'
+    gal_prob=list_sklearn[new_min_index].predict_proba(X_std)[p]
+    
+    # So for this galaxy, coef*X_std[p] + inter will give you what sums to create the LDA
+    # My question is - is there a way to show the relative importance of this array
+    LDA_array = coef*X_std[p] + inter
+    #print(inputs_all)
+    #print(LDA_array)
+    
+    # I was thinking, determine which terms are most important if its nonmerging these
+    # will be the most negative terms to coef*X_std[p]
+    sorted = np.sort(LDA_array)
+    #print('sorted', sorted)
+    if gal_class==2:
+        #print('trying to find the index of this', list(LDA_array))
+        #print('this is the value', sorted[0][-1])
+        i_1 = np.where(LDA_array == sorted[0][-1])[1][0]
+        i_2 = np.where(LDA_array == sorted[0][-2])[1][0]
+        #print('this is the index', i_1, i_2)
+    else:
+        i_1 = np.where(LDA_array == sorted[0][0])[1][0]
+        i_2 = np.where(LDA_array == sorted[0][1])[1][0]
+        
+    #print('first most important', inputs_all[i_1], LDA_array[0][i_1])
+    #print('second most important', inputs_all[i_2], LDA_array[0][i_2])
+    
+    im=fits.open('imaging/out_'+str(gal_id)+'.fits')
+    camera_data=(im[1].data/0.005)
+    
+
+    fig = plt.figure()
+    grid = plt.GridSpec(2, 3, wspace=0.4, hspace=0.3)
+    #plt.subplot(grid[0, 0])
+    #plt.subplot(grid[0, 1:])
+    #plt.subplot(grid[1, :2])
+    #plt.subplot(grid[1, 2])
+    ax0 = plt.subplot(grid[0,0])
+    
+    im0 = ax0.imshow(np.abs(camera_data),norm=colors.LogNorm(vmin=10**(3), vmax=10**(6.5)), cmap='afmhot')#vmin=10**(1), vmax=10**(4)norm=colors.LogNorm(vmin=10**(-1), vmax=10**(2.5))
+    ax0.annotate(r'p$_{\mathrm{merg, major}} = $'+str(round(gal_prob[1],2))+'\n'+'LDA '+gal_name, xycoords='axes fraction',xy=(0.05,0.77),color='white', size=9)#,#ha="center", va="top",
+
+    ax0.axis('off')
+    
+    ax3 = plt.subplot(grid[1,:2])
+    #fig.add_subplot(234)
+    ax3.hist(LDA_LDA_nonmerg, label='Nonmergers', alpha=0.5, bins=10)
+    ax3.hist(LDA_LDA_merg, label='Mergers', alpha=0.5, bins=10)
+    ax3.annotate('1st Coef = '+str(inputs_all[i_1])+' '+str(round(LDA_array[0][i_1],1)), xy=(0.05,0.9), xycoords='axes fraction')
+    ax3.annotate('2nd Coef = '+str(inputs_all[i_2])+' '+str(round(LDA_array[0][i_2],1)), xy=(0.05,0.8), xycoords='axes fraction')
+    
+    #ax3.set_xlim([-50,50])
+    if gal_class==2:
+        ax3.axvline(x=np.sum(coef*X_std[p]+inter), color='red')
+    else:
+        ax3.axvline(x=np.sum(coef*X_std[p]+inter), color='blue')
+    plt.legend(loc="lower right")
+
+    ax1 = plt.subplot(grid[0,1])
+    #fig.add_subplot(232)
+    if gal_class==2:
+        sns.kdeplot(nonmerg_m20_LDA, nonmerg_gini_LDA, cmap="Blues_r", shade=True,shade_lowest=False, alpha=0.25)
+        sns.kdeplot(merg_m20_LDA, merg_gini_LDA, cmap="Reds_r", shade=True,shade_lowest=False, alpha=0.75)
+    else:
+        sns.kdeplot(merg_m20_LDA, merg_gini_LDA, cmap="Reds_r", shade=True,shade_lowest=False, alpha=0.25)
+        sns.kdeplot(nonmerg_m20_LDA, nonmerg_gini_LDA, cmap="Blues_r", shade=True,shade_lowest=False, alpha=0.75)
+    im1=ax1.scatter(df2['M20'].values[p], df2['Gini'].values[p], color='yellow',marker='*', s=25, zorder=100)
+    dashed_line_x=np.linspace(-0.5,-3,100)
+    dashed_line_y=[-0.14*x + 0.33 for x in dashed_line_x]
+
+    ax1.plot(dashed_line_x, dashed_line_y, ls='--', color='black')
+
+    ax1.set_xlim([0,-3])
+    ax1.set_ylim([0.2,0.8])#ax1.set_ylim([0.3,0.8])
+    ax1.set_xlabel(r'M$_{20}$')
+    ax1.set_ylabel(r'Gini')
+    ax1.set_aspect(abs(3)/abs(0.6))
+
+    ax2 = plt.subplot(grid[0,2])
+    #fig.add_subplot(233)
+    ax2.set_xlim([-0.2,1])
+    ax2.set_ylim([0,6])#ax1.set_ylim([0.3,0.8])
+    ax2.set_xlabel(r'A')
+    ax2.set_ylabel(r'C')
+    ax2.set_aspect(1.2/6)
+    plt.axvline(x=0.35, ls='--', color='black')
+    if gal_class ==2:
+        sns.kdeplot(nonmerg_A_LDA, nonmerg_C_LDA, cmap="Blues_r", shade=True,shade_lowest=False, alpha=0.25)
+        sns.kdeplot(merg_A_LDA, merg_C_LDA, cmap="Reds_r", shade=True,shade_lowest=False, alpha=0.75)
+    else:
+        sns.kdeplot(merg_A_LDA, merg_C_LDA, cmap="Reds_r", shade=True,shade_lowest=False, alpha=0.25)
+        sns.kdeplot(nonmerg_A_LDA, nonmerg_C_LDA, cmap="Blues_r", shade=True,shade_lowest=False, alpha=0.75)
+    im2=ax2.scatter(df2['Asymmetry (A)'].values[p], df2['Concentration (C)'].values[p], color='yellow',marker='*', s=25, zorder=100)
+
+
+    
+    ax5=plt.subplot(grid[1,2])
+    #fig.add_subplot(236)
+    if gal_class ==2:
+        sns.kdeplot(nonmerg_A_S_LDA, nonmerg_n_LDA, cmap="Blues_r", shade=True,shade_lowest=False, alpha=0.25)
+        sns.kdeplot(merg_A_S_LDA, merg_n_LDA, cmap="Reds_r", shade=True,shade_lowest=False, alpha=0.75)
+    else:
+        sns.kdeplot(merg_A_S_LDA, merg_n_LDA, cmap="Reds_r", shade=True,shade_lowest=False, alpha=0.25)
+        sns.kdeplot(nonmerg_A_S_LDA, nonmerg_n_LDA, cmap="Blues_r", shade=True,shade_lowest=False, alpha=0.75)
+    im5=ax5.scatter(df2['Shape Asymmetry'].values[p], df2['Sersic N'].values[p], color='yellow',marker='*', s=25, zorder=100)
+
+
+    ax5.set_xlim([0,1])
+    ax5.set_ylim([0,4])#ax1.set_ylim([0.3,0.8])
+    ax5.set_xlabel(r'$A_S$')
+    ax5.set_ylabel(r'$n$')
+    plt.axvline(x=0.2, ls='--', color='black')
+    ax5.set_aspect(1/4)
+
+    #plt.tight_layout()
+    plt.savefig('panel_plots/Panel_'+str(gal_id)+'.png', dpi=500)
+    plt.close()
+    
+    
 STOP
+
 plt.clf()
 fig, ax = plt.subplots(4,4, figsize=(15, 15), facecolor='w', edgecolor='k')
 fig.subplots_adjust(hspace = .001, wspace=.001)
@@ -1276,12 +1481,12 @@ for p in range(15):#len(df2)):
         try:
             im=fits.open('preim/preimage-'+mangaid+'.fits')
         except FileNotFoundError:
-            os.chdir(os.path.expanduser('/Users/beckynevin/Documents/Backup_My_Book/My_Passport_backup/MergerMonger/preim'))
+            os.chdir(os.path.expanduser('/Users/beckynevin/CfA_Code/Kinematics_and_Imaging_Merger_Identification/Identify_MaNGA_SDSS_mergers_imaging/preim'))
             '''Here is where it is necessary to know the SDSS data password and username'''
             os.system('wget --http-user=sdss --http-passwd=2.5-meters https://data.sdss.org/sas/mangawork/manga/preimaging/D00'+dsgn_grp+\
     'XX/'+designid+'/preimage-'+mangaid+'.fits.gz ')
             os.system('gunzip preimage-'+mangaid+'.fits.gz')
-            os.chdir(os.path.expanduser('/Users/beckynevin/Documents/Backup_My_Book/My_Passport_backup/MergerMonger'))
+            os.chdir(os.path.expanduser('/Users/beckynevin/CfA_Code/Kinematics_and_Imaging_Merger_Identification/Identify_MaNGA_SDSS_mergers_imaging'))
         
     
         im=fits.open('preim/preimage-'+mangaid+'.fits')
@@ -1289,15 +1494,15 @@ for p in range(15):#len(df2)):
         camera_data=(im[4].data/0.005) 
     
         im=ax[p_plot].imshow(np.abs(camera_data),norm=colors.LogNorm(vmin=10**(1), vmax=10**(4)), cmap='afmhot')
-        ax[p_plot].annotate(str(gal_id)+'\n'+str(gal_prob)+'\n'+gal_name, xycoords='axes fraction',xy=(0.1,0.9),#ha="center", va="top",
-                bbox=dict(boxstyle="round", fc="1.0"))
+        ax[p_plot].annotate(str(gal_id)+'\n'+str(round(gal_prob[0],2))+' '+str(round(gal_prob[1],2))+'\n'+gal_name, xycoords='axes fraction',xy=(0.1,0.85),#ha="center", va="top",
+                bbox=dict(facecolor='black',boxstyle="round", fc="1.0", edgecolor='white'))
         ax[p_plot].axis('off')
     
-        os.chdir(os.path.expanduser('/Users/beckynevin/Documents/Backup_My_Book/My_Passport_backup/MergerMonger/preim'))
+        os.chdir(os.path.expanduser('/Users/beckynevin/CfA_Code/Kinematics_and_Imaging_Merger_Identification/Identify_MaNGA_SDSS_mergers_imaging/preim'))
         os.system('rm preimage-'+mangaid+'.fits.gz')
         os.system('rm preimage-'+mangaid+'.fits')
         p_plot+=1
 
-os.chdir(os.path.expanduser('/Users/beckynevin/Documents/Backup_My_Book/My_Passport_backup/MergerMonger'))
+os.chdir(os.path.expanduser('/Users/beckynevin/CfA_Code/Kinematics_and_Imaging_Merger_Identification/Identify_MaNGA_SDSS_mergers_imaging'))
 plt.savefig('MaNGA_rando_major.pdf')
     
