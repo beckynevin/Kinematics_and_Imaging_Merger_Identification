@@ -47,7 +47,9 @@ from astroquery.sdss import SDSS
 from astropy import coordinates as coords
 from astropy import units as u
 from astropy.nddata import Cutout2D
-
+import scipy.ndimage as ndi
+from astropy.stats import SigmaClip
+from photutils import Background2D, MedianBackground
 
 # This code snippet is really useful to get all the numbers in order to wget SDSS images from just the objid:
 def SDSS_objid_to_values(objid):
@@ -188,8 +190,48 @@ for i in range(len(df)):
     except FileNotFoundError:
         STOP
     # This is the datamodel for SDSS frame images: https://data.sdss.org/datamodel/files/BOSS_PHOTOOBJ/frames/RERUN/RUN/CAMCOL/frame.html
-    print(im[0].header)
-    STOP
+    
+    # We would like to have an error image and an image using three extensions of im:
+    ''';; 0. find filename of the frame file
+    framename = (sdss_name('frame', run, camcol, field, $
+                           filter=filternum(filter), rerun=rerun))[0]+'.bz2'
+
+    ;; 1. read in the FITS image from HDU0; the resulting image will be
+    ;;    sky-subtracted as well as calibrated in nanomaggies/pixel
+    img= mrdfits(framename,0,hdr)
+    nrowc= (size(img,/dim))[1]
+
+    ;; 2. read in sky, and interpolate to full image size; this returns a
+    ;;    sky image the same size as the frame image, in units of counts
+    sky= mrdfits(framename,2)
+    simg= interpolate(sky.allsky, sky.xinterp, sky.yinterp, /grid)
+
+    ;; 3. read in calibration, and expand to full image size; this returns
+    ;;    a calibration image the same size as the frame image, in units of
+    ;;    nanomaggies per count
+    calib= mrdfits(framename,1)
+    cimg= calib#replicate(1.,nrowc)
+    Steps (0) and (1) just read in the "image". Step (2) reads in the sky HDU, and bilinearly interpolates "allsky" onto a 2048x1489 sized array at the points on the grid defined by "xinterp" and "yinterp". Step (3) reads in the 2048-element vector defined the calibration-times-flat-field for each row, and expands it to a full-sized image.
+
+    If you have performed the above calculations, you can return the image to very close to the state it was in when input into the photometric pipeline, as follows:
+
+    dn= img/cimg+simg
+    These dn values are in the same units as the "data numbers" stored by the raw data files that come off the instrument. They are related to the detected number nelec of photo-electrons by:
+
+    nelec= dn*gain
+    The number of photo-electrons is the quantity that is statistically Poisson distributed. In addition, there are additional sources of noise from the read-noise and the noise in the dark current, which we will lump together here as the "dark variance." Thus, to calculate per-pixel uncertainties, you need the gain and darkVariance for the field in question. The darkVariance comes from the read noise and the noise in the dark current. In fact, these are nearly fixed as a function of camcol and filter (see the table below). You can retrieve the values from the field table in CAS (or the photoField file). With those values in hand the following yields the errors in DN:
+
+    dn_err= sqrt(dn/gain+darkVariance)
+    
+    
+    sky = im[2].data
+    simg = np.interpolate()
+    
+    calib = im[1].data
+    cimb = calib'''
+    # For right now, I'm assuming there is no background sky and just taking the error to be the square root
+    # of the image (which is like in the high <S/N> regime). I need to go back and fix this
+    
     # Now you need to cut out around the object in a square 80 by 80 arcsec box (same as used for simulated galaxies):
 
     obj_coords = SkyCoord(str(df['RA'][i])+' '+str(df['DEC'][i]),unit=(u.hourangle, u.deg))
@@ -198,6 +240,9 @@ for i in range(len(df)):
     wcs_a = WCS(im[0].header)
 
     stamp_a = Cutout2D(im[0].data, obj_coords, size, wcs=wcs_a)#was image_a[0].data
+    
+    
+    
     # Use the header to convert from weird units of nanomaggies into Counts
     camera_data=(np.fliplr(np.rot90(stamp_a.data))/im[0].header['NMGY'])
     # Optionally Plot the the stamp to double check that it is working:
@@ -227,9 +272,7 @@ for i in range(len(df)):
 
     
     
-    camera_data_ivar=abs(im[5].data)
-    #calculate the percent error to then convert to counts:
-    STOP
+    
     #percent_e=abs((1/camera_data_ivar**2)/im[4].data)
     camera_data_sigma = np.sqrt(abs(camera_data))
     
@@ -257,7 +300,9 @@ for i in range(len(df)):
 
      
     
-    '''Make a psf file for Galfit'''
+    # I need to check this - I'm not convinced
+    # Galfit needs a PSF file, and I'm not sure how to find the PSF file
+    # although I could easily make one myself or feed it 1.5":
     #outfile = 'imaging/psf_'+sdss+'.fits'
     #hdu = fits.PrimaryHDU(psf)
     #hdu_number = 0
@@ -287,14 +332,14 @@ for i in range(len(df)):
     hdu.writeto(outfile, overwrite=True)
 
 
- 
-    pixelscale =  0.5#This is universally 0.5" spaxels for MaNGA                                                                                                    
+    # 24 μm; 0.396 arcseconds pixel-1
+    pixelscale =  0.396
     redshift = df['redshift'][i]
     kpc_arcmin=cosmo.kpc_proper_per_arcmin(redshift)#insert the redshift                                                                                            
-    '''Divide the pixelscale (kpc) by kpc/arcsec to get arcsec                                                                                                      
-    size of pixels'''
+    # Divide the pixelscale (arcsec) by kpc/arcsec to get kpc size of pixels
     kpc_pix=pixelscale/(kpc_arcmin.value/60)#This is the number of kpc/pixel
-    '''Running sextractor before galfit to determine good guess input parameters'''
+    
+    # Running sextractor before galfit to determine good guess input parameters
     
 
     write_sex_default(str(sdss))
@@ -313,18 +358,18 @@ for i in range(len(df)):
     
     
 
-    '''now put together all of the necessary Galfit inputs - it is a little finnicky and needs to know
-    magnitude guesses, which is annoying because everything is in counts and often there's no exposure time
-    provided, but you can guess the magnitude as below by setting the mag_zpt and then calculating the flux ratio
-    given the source extractor background and main source counts'''
+    # Now put together all of the necessary Galfit inputs - it is a little finnicky and needs to know
+    # magnitude guesses, which is annoying because everything is in counts and often there's no exposure time
+    # provided, but you can guess the magnitude as below by setting the mag_zpt and then calculating the flux ratio
+    # given the source extractor background and main source counts:
 
     
  
 
-    '''This is scaled up using the background flux and the flux from the petrosian output'''
+    # This is scaled up using the background flux and the flux from the petrosian output
     
-    '''Now use the output of source extractor to also determine the petrosian radius,
-    the semimajor and semiminor axes, the flux guess, the bg level, the PA, and the axis ratio'''
+    # Now use the output of source extractor to also determine the petrosian radius,
+    # the semimajor and semiminor axes, the flux guess, the bg level, the PA, and the axis ratio
     r_sex=sex_out[0]#petrosian radius (aka semimajor axis because it is an elliptical aperture)
     b_sex=sex_out[1]#minor axis of the above
     flux_sex=sex_out[2]#flux of the brightest aperture in counts
@@ -375,7 +420,7 @@ for i in range(len(df)):
         f=write_galfit_feedme(sdss, x_pos_1, y_pos_1, 0,0, mag_guess, mag_zpt, num_bulges, length_gal, eff_rad_1,0,0, AR_1, PA1, 0, 0, bg_level)
         
 
-    '''Runs galfit inline and creates an output file'''
+    # This code runs galfit inline and creates an output file
     g=run_galfit(str(sdss))
 
     output='imaging/out_'+str(sdss)+'.fits'
@@ -388,124 +433,59 @@ for i in range(len(df)):
         print('Galfit failed', sdss)
         continue
     
-    '''This extracts useful parameters from Galfit'''
+    # This extracts useful parameters from Galfit such as the kpc separation if there are two nucli, the flux ratio (if there
+    # are two nuclei), the sersic index, and the inclination of the main galaxy:
     h=galfit_params(sdss,num_bulges,kpc_pix)
     if h[2]==999:
         continue
 
 
-    #Re-adjust so the important parameters are now Galfit outputs:
     sep=h[0]
     flux_r=h[1]
     ser=h[2]# you can use many of these predictors to check the output, but the only important one is the sersic profile
     inc=h[3]
 
 
-    '''plt.clf()
-    ax = plt.subplot(111,aspect='equal')
-    ax.imshow(camera_data)
-    from matplotlib.patches import Ellipse
-    ellipse=Ellipse((x_pos_1, y_pos_1),2*r_sex, 2*b_sex, PA1,ec='white', fc="none", lw=3)
-    ax.add_artist(ellipse)
-    plt.savefig('../MaNGA_Papers/Paper_I/troubshoot_ellipse_'+str(sdss)+'.pdf')
-    STOP'''
+    # I think the most complicated part of this analysis is creating a segmentation map.
+    # The segmentation map is used to calculate many of the imaging predictors and it is important
+    # because it helps decide which pixels belong to the main galaxy.
+    # As a side note, one relative advantage on this approach over CNN approaches to identify mergers
+    # is that this approach does not consider ALL pixels like a CNN. Instead it uses the seg map to
+    # determine which pixels it cares about. This means it is less sensitive to having observational
+    # realism in terms of background galaxies than many CNNs.
+    
+    # Find the surface brightness at the petrosian radius, which is used to threshold the image:
 
-    limiting_sb=input_petrosian_radius(r_sex, b_sex, flux_sex)
-    print('limiting sb at petrosian', limiting_sb)
+    #limiting_sb=input_petrosian_radius(r_sex, b_sex, flux_sex)
+    #print('limiting sb at petrosian', limiting_sb)
 
-    threshold = np.array(limiting_sb*np.ones((np.shape(camera_data)[0],np.shape(camera_data)[1])))
-        #print(threshold)
-    npixels = 1  # was 1 minimum number of connected pixels
-        #threshold=0.1
+    #threshold = np.array(limiting_sb*np.ones((np.shape(camera_data)[0],np.shape(camera_data)[1])))
+  
+    #npixels = 5  # 1 is minimum number of connected pixels
 
     
-
-    segm = photutils.detect_sources(camera_data, threshold, npixels)
+    #segm = photutils.detect_sources(camera_data, threshold, npixels)
         
- 
-    label = np.argmax(segm.areas) + 1
-    segmap = segm.data == label
-
- 
-    segmap_float = ndimage.uniform_filter(np.float64(segmap), size=10)
-
-    new_threshold = (0.75*(np.max(segmap_float)-np.min(segmap_float))+np.min(segmap_float))
-    segm = photutils.detect_sources(segmap_float, new_threshold, npixels, connectivity=8)
-
-    label = np.argmax(segm.areas) + 1
-    segmap = segm.data == label
-
-          
-    segmap_float = ndimage.uniform_filter(np.float64(segmap), size=10)
-    segmap = segmap_float >  0.5
-    #else:
-        #segmap = segmap_float >  0.5
-
-
- 
-    
-    
+    # You can either make the seg map this way or you can use snr below, which
+    # I find works better for SDSS:
 
     threshold = photutils.detect_threshold(camera_data, snr=1.5)#, background=0.0)#was 1.5
     npixels = 5  # minimum number of connected pixels was 5
     segm = photutils.detect_sources(camera_data, threshold, npixels)
 
+    
     label = np.argmax(segm.areas) + 1
     segmap = segm.data == label
-    import scipy.ndimage as ndi
+    
 
     segmap_float = ndi.uniform_filter(np.float64(segmap), size=10)
     segmap = segmap_float > 0.5
 
     
-    #Now we need to do some thresholding using the limiting
-    #surface brightness at the petrosian radius:
-    #threshold = np.array(limiting_sb*np.ones((np.shape(camera_data)[0],np.shape(camera_data)[1])))
-    #masked=ma.masked_where(camera_data < limiting_sb, camera_data)
-    #plt.clf()
-    #plt.imshow(masked)
-    #plt.savefig('sdss/masked.pdf')
-    #npixels = 1  # minimum number of connected pixels                                                                                                               
-                                                                                                                                                      
-
     
     
-
-    #segmap_float = ndimage.uniform_filter(np.float64(segmap), size=10)
-    #segmap = segmap_float > (0.5*(np.max(segmap_float)-np.min(segmap_float))+np.min(segmap_float))
-    #print('new thresh', 0.5*(np.max(segmap_float)-np.min(segmap_float))+np.min(segmap_float))
+    # In case you need to do background estimation:
     
-
-    '''If its all black then select from before'''
-    
-    '''if np.min(segmap_float) > 0.5:
-        print('getting a better segmap')
-        segmap=np.ones((np.shape(camera_data)[0],np.shape(camera_data)[1]))'''
-    
-    plt.clf()
-    #plt.title(str(0.5*(np.max(segmap_float)-np.min(segmap_float))+np.min(segmap_float)))
-    fig=plt.figure()
-    ax1=fig.add_subplot(141)
-    im1=ax1.imshow(camera_data, norm=matplotlib.colors.LogNorm())
-    plt.colorbar(im1)
-    
-    ax2=fig.add_subplot(142)
-    im2=ax2.imshow(segm)
-    plt.colorbar(im2)
-    
-    #ax3=fig.add_subplot(143)
-    #im3=ax3.imshow(segmap_float)
-    #plt.colorbar(im3)#this needs to be pretty much fully 0 to 1, when its half that were in trouble
-    
-    ax4=fig.add_subplot(144)
-    im4=ax4.imshow(segmap)
- #   plt.colorbar(im2)
-    plt.savefig('sdss/sigma_probs.pdf')
-
-
-    '''Vicente says to do some background estimation'''
-    from astropy.stats import SigmaClip
-    from photutils import Background2D, MedianBackground
     sigma_clip = SigmaClip(sigma=3., iters=10)
     bkg_estimator = MedianBackground()
     try:
@@ -516,19 +496,9 @@ for i in range(len(df)):
 
     
     
-    '''plt.clf()
-    fig=plt.figure()
-    ax1=fig.add_subplot(211)
-    im1=ax1.imshow(camera_data)
-    plt.colorbar(im1)
     
-    ax2=fig.add_subplot(212)
-    im2=ax2.imshow(camera_data_sigma)
-    plt.colorbar(im2)
-    plt.savefig('diagnostic_sig.pdf')
-    STOP'''
 
-    #call statmorph
+    # call statmorph (cite Vicente Rodriguez-Gomez)
     source_morphs = statmorph.source_morphology(camera_data, segmap, 
                                                 weightmap=camera_data_sigma,skybox_size=20)#,weightmap=camera_data_sigma)#psf=psf,
     try:
@@ -541,12 +511,16 @@ for i in range(len(df)):
     morph=source_morphs[0]
     
     if morph.sn_per_pixel < 2.5:
+        # This is how to weed out galaxies with too low of S/N per pixel:
+        # Vicente says that below a certain level the predictors got wonky and I found
+        # this to be true at <S/N> < 2.5
         continue
-    #if morph.flag==1:
-    #    '''This means the measurement is unreliable'''
-    #    continue
+    if morph.flag==1:
+        # This means the measurement is unreliable
+        continue
     print('S_N', morph.sn_per_pixel, 'mag', mag_flux)
 
+    # This is a nifty diagnostic plot that shows statmorph at work for each galaxy:
     plt.clf()
     fig = make_figure(morph)
     fig.savefig('diagnostics_SDSS_seg_'+str(sdss)+'.png')
@@ -572,20 +546,18 @@ for i in range(len(df)):
     print('flag =', morph.flag)
     print('flag_sersic =', morph.flag_sersic)
     
-    
+    # Most of the predictors are from statmorph
     gini=morph.gini
     m20=morph.m20
     con=morph.concentration
     asy=morph.asymmetry
     clu=morph.smoothness
     
-    
-    '''Now we need to apply the segmentation mask to the normal surface brightness'''
-    
-    n = img_assy_shape(segmap,sdss)
+    # I have my own code to measure shape asymmetry, but I wound up using the value from
+    # statmorph and found they were similar in relative value between different galaxies:
+    #n = img_assy_shape(segmap,sdss)
  
 
-    print('my assy', n, 'shape assy morhp', morph.shape_asymmetry)
     
     n = morph.shape_asymmetry
     if ser > 20:
@@ -596,8 +568,9 @@ for i in range(len(df)):
             'ID'+'\t'+'Merger?'+'\t'+'# Bulges'+'\t'+'Sep'+'\t'+'Flux Ratio'+'\t'+'Gini'+'\t'+'M20'+'\t'+'C'+'\t'+'A'+'\t'+'S'+
                     '\t'+'Sersic n'+'\t'+'A_s'+'\n')#was str(np.shape(vel_dist)[1]-1-j)
 
-    #The Merger? column is meaningless; MergerMonger will classify while ignoring these columns
-    #but it is important to leave it in for ease so that the dataframes have the same headers and match formats
+    # The Merger? column is meaningless; MergerMonger will classify while ignoring these columns
+    # but it is important to leave it in for ease so that the dataframes have the same headers and match format
+    # with the simulated galaxies, where this label is actually important.
     file.write(str(counter)+'\t'+str(sdss)+'\t'+str(merger[i])+'\t'+str(num_bulges)+'\t'+str(sep)+'\t'+str(flux_r)+
                 '\t'+str(gini)+'\t'+str(m20)+'\t'+str(con)+'\t'+str(asy)+'\t'+str(clu)+'\t'+str(ser)+'\t'+str(n)+'\n')#was str(np.shape(vel_dist)[1]-1-j)
     
