@@ -1,10 +1,12 @@
 '''
 ~~~
-MergerMonger Expert classifies a provided .txt file of galaxies with predictors
-using the posterior probability distributions from the input simulated galaxies
-used to construct the LDA. 
-It does a very similar thing to MergerMonger Novice but produces prior probabilities instead
+MergerMonger_Expert classifies a provided .txt file of MaNGA galaxies with predictors
+using the posterior probability distributions from another .txt file that has
+the imaging predictors from the input simulated galaxies (these are used to construct the LDA).
+It does a very similar thing to MergerMonger_Novice but produces prior probabilities instead
 of just a binary classification.
+My goal is to make the classification threshold adjustable to have cleaner samples of mergers.
+(Currently, it is just set at p_merg = 0.5)
 ~~~
 '''
 
@@ -28,6 +30,8 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import LabelEncoder
 from scipy.signal import argrelextrema
 
+
+
 def locate_min(a):
     smallest = min(a)
     return smallest, [index for index, element in enumerate(a)
@@ -35,7 +39,7 @@ def locate_min(a):
 
 os.chdir(os.path.expanduser('/Users/beckynevin/CfA_Code/Kinematics_and_Imaging_Merger_Identification/Identify_MaNGA_SDSS_mergers_imaging'))
 
-   # from http://scikit-learn.org/stable/auto_examples/model_selection/plot_confusion_matrix.html#example-model-selection-plot-confusion-matrix-py
+# A lot of the ML parts of this code are from http://scikit-learn.org/stable/auto_examples/model_selection/plot_confusion_matrix.html#example-model-selection-plot-confusion-matrix-py
 def plot_confusion_matrix(cm, target_names, title, cmap=plt.cm.Blues):
     sns.set_style("dark")
     plt.imshow(cm, interpolation='nearest', cmap=cmap)
@@ -54,7 +58,7 @@ def plot_confusion_matrix(cm, target_names, title, cmap=plt.cm.Blues):
                  horizontalalignment="center",
                  color="white" if cm[i, j] > thresh else "black")
 
-
+# The first step is to load up the prepared file that has the predictors of simulated galaxies
 feature_dict = {i:label for i,label in zip(
                 range(14),
                   ('Counter',
@@ -75,14 +79,19 @@ feature_dict = {i:label for i,label in zip(
 
 
 add_noise='no'
+
+# For major mergers the priors are [0.9,0.1] for minor mergers they are [0.7,0.3]
+# It's also possible to adjust these as a way of making a more selective classification,
+# i.e., this basically moves the intercept term in the LDA
 priors_list=[[0.9,0.1]]#[0.75,0.25]]
 plt.clf()
 missclass_list=[]
 
-
+# It would be possible to adjust this classification by providing a new table
+# Here I'm using the combined major merger classification, I could also do this with the minor merger files
 df = pd.io.parsers.read_csv(filepath_or_buffer='LDA_prep_predictors_all_combined_major.txt',header=[0],sep='\t')
-#was LDA_prep_predictors_all_combined.txt
-#LDA_img_ratio_statmorph_fg3_m12_A_S.txt'
+
+# Not sure why, but I always need to add Shape Assy as a separate column
 df.columns = [l for i,l in sorted(feature_dict.items())] + ['Shape Asymmetry']
 
 df.dropna(how="all", inplace=True) # to drop the empty line at file-end
@@ -105,12 +114,12 @@ myr=sorted(list(set(myr)))
     
     
     
-df.dropna(inplace=True) # to drop the empty line at file-end
-    
     
 
-from sklearn.preprocessing import LabelEncoder
-from sklearn.preprocessing import LabelEncoder
+
+# There has got to be a better way to do this,
+# Here I'm just creating a bunch of different functions
+# to calculate all of the different cross-terms.
 def gini_m20(row):
     return row['Gini']*row['M20']
 def gini_C(row):
@@ -186,7 +195,10 @@ df['S*n'] = df.apply(S_n,axis=1)
 df['S*A_S'] = df.apply(S_A_S,axis=1)
 
 df['n*A_S'] = df.apply(n_A_S,axis=1)
-#print(df)
+
+
+# These are lists of all the different possible combinations of terms,
+# The LDA's k-fold cross-validation will select which ones are needed.
 
 ct_1=['Gini','Gini','Gini','Gini','Gini','Gini',
   'M20','M20','M20','M20','M20',
@@ -236,10 +248,22 @@ list_std_scale=[]
 list_sklearn=[]
 list_mean_non=[]
 
+# It is important to set up the k-fold outside of the loop
 kf = StratifiedKFold(n_splits=10, random_state=True, shuffle=True)
 
-for o in range(len(inputs)):#len(inputs)-20):
-
+# Its time to begin the LDA!
+# This code will go through and select which predictors are important for the classifcation.
+# It will also determine their coefficients and associated uncertainties.
+# The way this works is it starts with nothing (no predictors) selected and then tries to add one term
+# at a time, going through all possible ones and comparing their misclassification errors.
+# Then, if adding a term does not significantly improve the number of misclassifications,
+# it does not add another term.
+# If it selects a cross-term that contains two terms,
+# I've required it to also include those two terms individually in the classification for
+# interpretation's sake.
+for o in range(len(inputs)):
+    # So for each possible predictor in the input list, go through and
+    # determine which added one minimizes the misclassification error and select that term
     coef_mean=[]
     coef_std=[]
     inter_mean=[]
@@ -261,11 +285,12 @@ for o in range(len(inputs)):#len(inputs)-20):
     for k in range(len(inputs)):#Search through every one
 
         prev_input.append(inputs[k])
+        
+        # inputs_here contains the list of predictors that minimize the misclassification
         inputs_here=[]
         inputs_here.append(inputs[k])
 
-        #print('starting input', prev_input,inputs[k])
-        #if inputs[k] is a cross term and the prev_input doesn't contain it, add it:
+        # If inputs[k] is a cross term and the prev_input doesn't contain it, add it:
         for m in range(len(term)):
             if inputs[k]==term[m]:
                 #then you are going to search every term of prev_input and see if it is there
@@ -291,14 +316,13 @@ for o in range(len(inputs)):#len(inputs)-20):
 
         y = df['class label'].values
 
-        from sklearn import preprocessing
-
-
-
+        
         std_scale = preprocessing.StandardScaler().fit(X)
         
         
         std_scale_this_step.append(std_scale)
+        # It helps to scale all the data points for each predictor to have a mean
+        # of 0 and a std of 1:
         X = std_scale.transform(X)
 
 
@@ -308,12 +332,13 @@ for o in range(len(inputs)):#len(inputs)-20):
 
 
         label_dict = {1: 'NonMerger', 2: 'Merger'}
-        from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
+        
 
-        # LDA
+        # Time to initialize the LDA with the given priors:
         sklearn_lda = LDA(priors=priors_list[0], store_covariance=True)#store_covariance=False
 
         sklearn_this_step.append(sklearn_lda)
+        # This actually runs the LDA:
         X_lda_sklearn = sklearn_lda.fit_transform(X, y)
         
         dec = sklearn_lda.score(X,y)
@@ -326,7 +351,8 @@ for o in range(len(inputs)):#len(inputs)-20):
 
 
 
-
+        # Okay but to get the errors associated with the LDA coefficients, split up the dataset k times
+        # I chose k=10:
         kf.get_n_splits(X, y)
 
 
@@ -341,6 +367,8 @@ for o in range(len(inputs)):#len(inputs)-20):
         #sklearn_list=[]
         mean_non_list=[]
         count=0
+        # Now for each of the k splits, run LDA individually to determine some estimate
+        # of how much error is associated with these coefficients:
         for train_index, test_index in kf.split(X, y):
 
             X_train, X_test = X[train_index], X[test_index]
@@ -355,13 +383,15 @@ for o in range(len(inputs)):#len(inputs)-20):
             coef = sklearn_lda.coef_
             inter = sklearn_lda.intercept_
 
+            # store the intercepts and coefficients for the LDA
             inter_list.append(inter)
             coef_list.append(coef)
-            inter_list.append(inter)
-            pred =sklearn_lda.predict(X_test)
+            pred = sklearn_lda.predict(X_test)
             classes_list.append(sklearn_lda.classes_)
             confusion_master.append(confusion_matrix(pred,y_test))
 
+            # This tells you the number of false negatives and false positives in the classification,
+            # or the number of misclassifications
             single_prediction.append(confusion_matrix(pred,y_test)[1][0]+confusion_matrix(pred,y_test)[0][1])
 
             my_lists_none = []
@@ -378,19 +408,20 @@ for o in range(len(inputs)):#len(inputs)-20):
             
             mean_non_list.append(float((np.mean(my_lists_merg))+float(np.mean(my_lists_none)))/2)
             
-
+        # Okay the misclassifications are contained here (the mean and error)
         accuracy.append(np.mean(single_prediction))#/(master[0][0]+master[1][0]+master[0][1]+master[1][1]))
 
         accuracy_e.append(np.std(single_prediction))
         inputs_this_step.append(np.array(prev_input))
+        # Later, I will use the 'accuracy' and 'inputs_this_step' to determine the number of terms to use
 
+              
         confusion_master_this_step.append(np.array((np.mean(confusion_master,axis=0)/np.sum(np.mean(confusion_master,axis=0))).transpose()))
         master_this_step.append(np.array(np.mean(confusion_master, axis=0).transpose()))
         #print('appending with this', np.array(prev_input))
 
         classes_this_step.append(np.array(classes_list))
-        #sklearn_this_step.append(sklearn_list)
-
+        
 
         coef_mean.append(np.mean(coef_list, axis=0))
         coef_std.append(np.std(coef_list, axis=0))
@@ -399,7 +430,7 @@ for o in range(len(inputs)):#len(inputs)-20):
         inter_std.append(np.std(inter_list, axis=0))
         mean_non_this_step.append(np.mean(mean_non_list))
 
-        #prev_input.remove(new_stuff)
+        # This removes the new input in order to go back and try all other possible inputs
         for m in range(len(inputs_here)):
             try:
                 prev_input.remove(inputs_here[m])
@@ -408,28 +439,29 @@ for o in range(len(inputs)):#len(inputs)-20):
 
     if accuracy_e[accuracy.index(min(accuracy))]<0.00001:
         break
-    #print('all of inputs', inputs_this_step)
-    #print('selecting the best model for this step', (inputs_this_step[accuracy.index(min(accuracy))]))
-
+   
     thing=(inputs_this_step[accuracy.index(min(accuracy))])
-    first_A=min(accuracy)
-
     prev_input_here.append(thing)
 
+    # Going about finding the term that minimizes the misclassifications error (unfortunately I named this term 'accuracy', but its really a number of misclassifications, so you'll want to minimize it)
+    first_A=min(accuracy)
+
+    
     for m in range(len(thing)):
 
         prev_input.append(thing[m])
 
         try:
-
+            # Remove it from the list of inputs so you don't try to add it again
             inputs.remove(thing[m])
         except ValueError:
-            #print('~~~RUning into troubles')
+            # A lot of the commented out stuff is from when I first built this code
+            #print('~~~Runing into troubles')
             #print('inputs', inputs)
             #print('the thing to remove', thing[m])
             continue
-    #print('the input now', inputs)
-    #STOP
+    # Appending everything with the number of misclassifications and terms that were just selected.
+    # Later I'll go back and grab the relevant index
     prev_input=list(set(prev_input))
     missclass.append(min(accuracy))
     #print('coef previous to selecting min', coef_mean)
@@ -459,12 +491,7 @@ for o in range(len(inputs)):#len(inputs)-20):
     if len(thing)==28:
         break
 
-#print('these are your inputs',prev_input, prev_input_here)
-
-
-#list_coef=[]
-#list_coef_std=[]
-
+# Now figure out how many terms you want overall.
 min_A=min(missclass)
 min_comps=num_comps[missclass.index(min(missclass))]
 for p in range(len(missclass)):
@@ -472,12 +499,8 @@ for p in range(len(missclass)):
 plt.plot(num_comps,missclass, color='black')
 plt.scatter(num_comps,missclass, color='black')
 
-plt.fill_between(num_comps,np.array(missclass)+np.array(missclass_e), np.array(missclass)-np.array(missclass_e), alpha=.5,color='orange')
+plt.fill_between(num_comps,np.array(missclass)+np.array(missclass_e), np.array(missclass)-np.array(missclass_e), alpha=.5,color='pink')
 
-def locate_min(a):
-    smallest = min(a)
-    return smallest, [index for index, element in enumerate(a) 
-                  if smallest == element]
 
 min_index=locate_min(missclass)[1][0]
 
@@ -501,8 +524,11 @@ min_A_e=missclass_e[new_min_index]
 min_comps=num_comps[new_min_index]
 
 plt.scatter(min_comps, min_A,marker='x', color='black', zorder=100)
+plt.xlabel('Number of terms')
+plt.ylabel('Number of Misclassifications')
+plt.savefig('determine_n_comps.png', dpi=1000)
 
-
+# Print out all the slected terms and coefficients
 inputs_all=prev_input_here[new_min_index]#:new_min_index+1]
 #print(prev_input)
 print('terms before adding in necessary', inputs_all)
@@ -529,7 +555,7 @@ print('std of that', list_std_scale[new_min_index].var_)
 print('decision boundary', list_mean_non[new_min_index])
 
 
-
+# Option to make a confusion matrix:
 '''plt.clf()
 fig=plt.figure()#figsize=(6,6)
 plot_confusion_matrix(list_master_confusion[new_min_index], sklearn_lda.classes_, title='Normalized Confusion Matrix')
@@ -540,6 +566,7 @@ sns.set_style("darkgrid")
 
 master=list_master[new_min_index]
 
+# This is how to emeasure accuracy, precision, etc...
 print('~~~Accuracy~~~')
 print((master[1][1]+master[0][0])/(master[0][0]+master[1][0]+master[0][1]+master[1][1]))
 print('~~~Precision~~~')
@@ -555,7 +582,9 @@ print((2*master[1][1])/(master[0][1]+master[1][0]+2*master[1][1]))#2TP/(2TP+FP+F
 
 
 
-'''This is to create a file for use in the Novice version of the code'''
+# This section of code is to create a file for use in the Novice version of the code
+# It creates a .txt file that lists the coefficients that were selected, their
+# LDA values and stds.
 file=open('Inputs_MergerMonger_Novice.txt','w')
 for j in range(len(inputs_all)):
     
@@ -583,8 +612,12 @@ print('intercepts', list_inter[new_min_index])
 file.write(str(list_mean_non[new_min_index])+'\n')
 file.close()
 
-'''Now make a beautiful plot by first making contours from the sims'''
-'''But also reclassify all of df to compare'''
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# This next section creates a number of beautiful contour plots,
+# This is for assessing if things make sense based on prior
+# knowledge of the way these imaging predictors behave.
+# It should really be its own function
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 X_list_here=df[inputs_all].values
 #and standardize it
 std_mean=[float(x) for x in list_std_scale[new_min_index].mean_]
@@ -627,6 +660,8 @@ LDA_LDA_nonmerg=[]
 coef = list_coef[new_min_index]
 inter = list_inter[new_min_index]
 
+# Go through and grab the values of all the predictors for the merging and nonmerging pop
+# of simulated galaxies:
 for j in range(len(df)):
     if df['class label'].values[j]==0:
         nonmerg_gini.append(df['Gini'].values[j])
@@ -663,32 +698,7 @@ for j in range(len(df)):
 dashed_line_x=np.linspace(-0.5,-3,100)
 dashed_line_y=[-0.14*x + 0.33 for x in dashed_line_x]
 
-'''plt.clf()
-fig=plt.figure()
-plt.subplots_adjust(top = 0.99, bottom=0.01, hspace=1.5, wspace=0.4)
-ax1=fig.add_subplot(121)
-ax1.set_title('Merging')
-ax1.plot(dashed_line_x, dashed_line_y, ls='--', color='black')
-im1=ax1.scatter(merg_m20, merg_gini, color='red')
-im2=ax1.scatter(merg_m20_LDA, merg_gini_LDA, color='pink')
-ax1.set_xlim([0,-3])
-ax1.set_ylim([0.2,0.8])#ax1.set_ylim([0.3,0.8])
-ax1.set_xlabel(r'M$_{20}$')
-ax1.set_ylabel(r'Gini')
-ax1.set_aspect(abs(3)/abs(0.6))
 
-ax2=fig.add_subplot(122)
-ax2.set_title('Nonmerging')
-ax2.plot(dashed_line_x, dashed_line_y, ls='--', color='black')
-im1=ax2.scatter(nonmerg_m20, nonmerg_gini, color='blue')
-im2=ax2.scatter(nonmerg_m20_LDA, nonmerg_gini_LDA, color='purple')
-ax2.set_xlim([0,-3])
-ax2.set_ylim([0.2,0.8])#ax1.set_ylim([0.3,0.8])
-ax2.set_xlabel(r'M$_{20}$')
-ax2.set_ylabel(r'Gini')
-ax2.set_aspect(abs(3)/abs(0.6))
-
-plt.savefig('gini_m20_lda_vs_OG_class.pdf')'''
 
 merg_m20_LDA=np.array(merg_m20_LDA)
 merg_gini_LDA=np.array(merg_gini_LDA)
@@ -855,8 +865,9 @@ plt.savefig('n_A_S_contour_LDA.pdf')
 
 
 
-
-# Now load in the MaNGA table and classify
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Now load in the MaNGA table (for real galaxies) and classify
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
 feature_dict2 = {i:label for i,label in zip(
@@ -880,7 +891,7 @@ df2 = pd.io.parsers.read_table(filepath_or_buffer='LDA_img_statmorph_MaNGA_test.
 #LDA_img_statmorph_rando_MaNGA.txt
 df2.columns = [l for i,l in sorted(feature_dict2.items())] + ['Shape Asymmetry']
 
-print(df2)
+
 
 
 df2.dropna(how="all", inplace=True) # to drop the empty line at file-end
@@ -918,14 +929,6 @@ print('X_gal', X_gal)
 
 
 
-#X_gal = std_scale.transform(X_gal)
-
-print('np.shape', np.shape(list_std_scale[new_min_index].mean_))
-print('np.shape', np.shape(list_std_scale[new_min_index].var_))
-print('np.shape', np.shape(X_gal))
-
-
-
 std_mean=[float(x) for x in list_std_scale[new_min_index].mean_]
 std_std=[float(np.sqrt(x)) for x in list_std_scale[new_min_index].var_]
 X_std=[]
@@ -944,6 +947,7 @@ for j in range(len(X_gal)):
     testing_n.append(df2['Sersic N'].values[j])
     testing_A_S.append(df2['Shape Asymmetry'].values[j])
 
+# Make some quick histograms to see if the values make sense
 plt.clf()
 plt.hist(testing_Gini)
 plt.savefig('hist_Gini.pdf')
@@ -965,6 +969,7 @@ plt.savefig('hist_A_S.pdf')
 
 print('what are we even dealing with?', list_sklearn[new_min_index])
 
+# Use the LDA from the simulated galaxies to classify this new table:
 print(list_sklearn[new_min_index].predict(X_std))
 print(list_sklearn[new_min_index].predict_proba(X_std))
 classifications=list_sklearn[new_min_index].predict(X_std)
@@ -986,11 +991,11 @@ nonmerg_A_S_LDA_out=[]
 
 merg_name_list=[]
 nonmerg_name_list=[]
-print('~~~~Mergers~~~~')
 LDA_value=[]
 LDA_value_merg=[]
 LDA_value_nonmerg=[]
-
+# I went through and grabbed all the values of the merging and nonmerging
+# MaNGA galaxies and used them to make comparative contour plots
 for j in range(len(classifications)):
     if classifications[j]==2:#merger
         
@@ -1002,14 +1007,11 @@ for j in range(len(classifications)):
         merg_n_LDA_out.append(df2['Sersic N'].values[j])
         merg_A_S_LDA_out.append(df2['Shape Asymmetry'].values[j])
         merg_name_list.append(df2['ID'].values[j])
-        LDA_value.append(np.sum(X_std[j]))
+        # The LDA value is the sum of all of the stardardized Xs multiplied by
+        # the LDA coefficients added to the intercept term
+        LDA_value.append(np.sum(coef*X_std[j]+inter))
         LDA_value_merg.append(np.sum(coef*X_std[j]+inter))
-        print(df2['ID'].values[j],df2['Gini'].values[j], df2['M20'].values[j],
-              df2['Concentration (C)'].values[j],df2['Asymmetry (A)'].values[j],
-              df2['Clumpiness (S)'].values[j],df2['Sersic N'].values[j],
-              df2['Shape Asymmetry'].values[j])
-        print(X_std[j],np.sum(X_std[j]))
-        print('~~~~~~')
+        
     if classifications[j]==1:#nonmerger
         #print(df2['ID'].values[j])
         #print(X_std[j])
@@ -1022,28 +1024,31 @@ for j in range(len(classifications)):
         nonmerg_n_LDA_out.append(df2['Sersic N'].values[j])
         nonmerg_A_S_LDA_out.append(df2['Shape Asymmetry'].values[j])
         nonmerg_name_list.append(df2['ID'].values[j])
-        LDA_value.append(np.sum(X_std[j]))
+        LDA_value.append(np.sum(coef*X_std[j]+inter))
         LDA_value_nonmerg.append(np.sum(coef*X_std[j]+inter))
     
-plt.clf()
-plt.hist(LDA_value)
-plt.savefig('hist_LDA.pdf')
 
 
+# Compare the LDA values of your population of MaNGA galaxies
+# to that of the simulated galaxies:
+min_LDA = min(min(LDA_LDA_nonmerg), min(LDA_value_nonmerg))
+max_LDA = max(max(LDA_LDA_merg), max(LDA_value_merg))
+print('min',min_LDA)
 plt.clf()
 fig=plt.figure()
 ax0 = fig.add_subplot(211)
-ax0.hist(LDA_value_nonmerg, label='MaNGA Nonmergers', alpha=0.5)
-ax0.hist(LDA_value_merg, label='MaNGA Mergers', alpha=0.5)
-#ax0.set_xlim([-0.5, 1.5])
+ax0.hist(LDA_value_nonmerg, label='MaNGA Nonmergers', alpha=0.5, bins=20)
+ax0.hist(LDA_value_merg, label='MaNGA Mergers', alpha=0.5, bins=20)
+ax0.set_xlim([min_LDA,max_LDA])
 plt.legend()
 ax1 = fig.add_subplot(212)
-ax1.hist(LDA_LDA_nonmerg, label='LDA Nonmergers', alpha=0.5)
-ax1.hist(LDA_LDA_merg, label='LDA Mergers', alpha=0.5)
-#ax1.set_xlim([-0.5, 1.5])
+ax1.hist(LDA_LDA_nonmerg, label='LDA Nonmergers', alpha=0.5, bins=20)
+ax1.hist(LDA_LDA_merg, label='LDA Mergers', alpha=0.5, bins=20)
+ax1.set_xlim([min_LDA, max_LDA])
 plt.legend()
 
 plt.savefig('joint_hist_LDA.pdf')
+
 
 plt.clf()
 fig=plt.figure()
@@ -1075,11 +1080,11 @@ plt.legend()
 plt.title('Shape Asymmetry Distributions')
 plt.savefig('joint_hist_A_S.pdf')
 
-
+# Print the precentage of things that are merging and nonmerging
 print('percent nonmerg',len(nonmerg_name_list)/(len(nonmerg_name_list)+len(merg_name_list)))
 print('percent merg',len(merg_name_list)/(len(nonmerg_name_list)+len(merg_name_list)))
 
-
+# Start making the contour kdplots with scattered values of the MaNGA galaxies superimpsed
 plt.clf()
 fig=plt.figure()
 plt.subplots_adjust(top = 0.99, bottom=0.01, hspace=1.5, wspace=0.4)
@@ -1256,9 +1261,8 @@ plt.savefig('n_A_S_contour_SDSS_ellip_major.pdf')
 
 
 
-
-
-print('finished')
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# I wrote this next section to go about 
 
 '''Optional panel to plot the images of these things with their probabilities assigned'''
 from astropy.io import fits
