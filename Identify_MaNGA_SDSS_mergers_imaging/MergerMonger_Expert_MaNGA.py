@@ -29,6 +29,8 @@ from sklearn.model_selection import KFold
 from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import LabelEncoder
 from scipy.signal import argrelextrema
+from astropy.io import fits
+import matplotlib.colors as colors
 
 
 
@@ -972,7 +974,22 @@ print('what are we even dealing with?', list_sklearn[new_min_index])
 # Use the LDA from the simulated galaxies to classify this new table:
 print(list_sklearn[new_min_index].predict(X_std))
 print(list_sklearn[new_min_index].predict_proba(X_std))
+# Usually, I make the classifications this way:
 classifications=list_sklearn[new_min_index].predict(X_std)
+
+# But if you want a different cut-off, ie a more conservative classification
+# that only calls galaxies merger if p_merg > 0.75, then use this:
+classifications=[]
+print('shape', np.shape(X_std), 'len', len(X_std))
+for j in range(len(X_std)):
+    #print(list_sklearn[new_min_index].predict_proba(X_std)[j][1])
+    # This is where you set the new threshold
+    if list_sklearn[new_min_index].predict_proba(X_std)[j][1] > 0.9:
+        classifications.append(2)
+    else:
+        classifications.append(1)
+        
+
 merg_gini_LDA_out=[]
 merg_m20_LDA_out=[]
 merg_C_LDA_out=[]
@@ -1262,13 +1279,10 @@ plt.savefig('n_A_S_contour_SDSS_ellip_major.pdf')
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# I wrote this next section to go about 
+# I wrote this next section to go about making nice panel plots of the galaxies
+# with their imaging predictor values and classifications
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-'''Optional panel to plot the images of these things with their probabilities assigned'''
-from astropy.io import fits
-import os
-import seaborn as sns
-import matplotlib.colors as colors
 
 sns.set_style("white")
 os.chdir(os.path.expanduser('/Users/beckynevin/CfA_Code/Kinematics_and_Imaging_Merger_Identification/Identify_MaNGA_SDSS_mergers_imaging'))
@@ -1323,7 +1337,9 @@ def second_smallest(numbers):
 for p in range(len(df2)):#len(df2)):
     plt.clf()
     gal_id=df2[['ID']].values[p][0]
-    gal_class=list_sklearn[new_min_index].predict(X_std)[p]
+    #gal_class=list_sklearn[new_min_index].predict(X_std)[p]
+    # Again change this if you are doing a classification that is more conservative:
+    gal_class=classifications[p]
     if gal_class==2:
         gal_name='Merger'
     else:
@@ -1445,7 +1461,7 @@ for p in range(len(df2)):#len(df2)):
     plt.close()
     
     
-STOP
+
 
 plt.clf()
 fig, ax = plt.subplots(4,4, figsize=(15, 15), facecolor='w', edgecolor='k')
@@ -1460,7 +1476,8 @@ for p in range(15):#len(df2)):
     if gal_id=='3813':#8133-12704' or gal_id=='7992-12704' or gal_id=='8250-12701':
         continue
     else:
-        gal_class=list_sklearn[new_min_index].predict(X_std)[p]
+        #gal_class=list_sklearn[new_min_index].predict(X_std)[p]
+        gal_class=classifications[p]
         if gal_class==2:
             gal_name='Merger'
         else:
