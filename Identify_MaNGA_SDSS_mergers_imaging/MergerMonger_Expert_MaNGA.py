@@ -231,6 +231,8 @@ inputs=['Gini','M20','Concentration (C)','Asymmetry (A)','Clumpiness (S)','Sersi
        'A*S','A*n','A*A_S',
         'S*n','S*A_S',
        'n*A_S']
+       
+
 
 OG_length=len(inputs)
 
@@ -339,10 +341,10 @@ for o in range(len(inputs)):
         # Time to initialize the LDA with the given priors:
         sklearn_lda = LDA(priors=priors_list[0], store_covariance=True)#store_covariance=False
 
-        sklearn_this_step.append(sklearn_lda)
+        
         # This actually runs the LDA:
         X_lda_sklearn = sklearn_lda.fit_transform(X, y)
-        
+        sklearn_this_step.append(sklearn_lda)
         dec = sklearn_lda.score(X,y)
         prob = sklearn_lda.predict_proba(X)
 
@@ -759,7 +761,7 @@ ax2.set_aspect(abs(3)/abs(0.6))
 
 plt.savefig('gini_m20_contour_LDA.pdf')
 
-
+STOP
 plt.clf()
 fig=plt.figure()
 plt.subplots_adjust(top = 0.99, bottom=0.01, hspace=1.5, wspace=0.4)
@@ -888,7 +890,7 @@ feature_dict2 = {i:label for i,label in zip(
               'Sersic N',
             'Shape Asymmetry'))}
 
-df2 = pd.io.parsers.read_table(filepath_or_buffer='LDA_img_statmorph_MaNGA_test.txt',header=[0],sep='\t')
+df2 = pd.io.parsers.read_table(filepath_or_buffer='LDA_img_statmorph_MaNGA_mytable_troubleshoot.txt',header=[0],sep='\t')
 #LDA_img_statmorph_Fu_mergers.txt
 #LDA_img_statmorph_rando_MaNGA.txt
 df2.columns = [l for i,l in sorted(feature_dict2.items())] + ['Shape Asymmetry']
@@ -970,6 +972,7 @@ plt.hist(testing_A_S)
 plt.savefig('hist_A_S.pdf')
 
 print('what are we even dealing with?', list_sklearn[new_min_index])
+STOP
 
 # Use the LDA from the simulated galaxies to classify this new table:
 print(list_sklearn[new_min_index].predict(X_std))
